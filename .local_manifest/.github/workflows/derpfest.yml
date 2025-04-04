@@ -1,0 +1,42 @@
+name: DerpFest CI for Tetris
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/cosminmocanudev/aosp-builder:vanilla
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up ccache
+        run: |
+          sudo apt install ccache -y
+          export USE_CCACHE=1
+          ccache -M 20G
+
+      - name: Initialize repo
+        run: |
+          mkdir -p workspace && cd workspace
+          repo init -u https://github.com/DerpFest-AOSP/manifest.git -b 14
+          git clone https://github.com/theofficialgman/local_manifest.git .repo/local_manifests
+          cp ../.local_manifest/local_manifest.xml .repo/local_manifests/local_manifest.xml
+          repo sync -j$(nproc) --no-tags --no-clone-bundle --force-sync
+
+      - name: Build ROM
+        run: |
+          cd workspace
+          source build/envsetup.sh
+          lunch derp_tetris-userdebug
+          export TZ=Asia/Kolkata
+          mka bacon -j$(nproc)
+
+      - name: Upload to Pixeldrain
+        if: success()
+        run: |
+          sudo apt install curl jq -y
+          ZIP=$(find workspace/out/target/product/tetris -name "*.zip" | head -n 1)
+          curl -F "file=@$ZIP" https://pixeldrain.com/api/file
